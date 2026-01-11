@@ -31,6 +31,11 @@ import com.example.iris_new.navigation.NavigationManager
 import kotlinx.coroutines.launch
 import java.util.Locale
 import java.util.concurrent.Executors
+import com.example.iris_new.face.FaceAnalyzer
+import com.example.iris_new.face.FaceEmbeddingExtractor
+import com.example.iris_new.face.FaceRecognitionManager
+import com.example.iris_new.face.FaceRepository
+import com.example.iris_new.face.db.FaceDatabase
 
 
 class MainActivity : AppCompatActivity() {
@@ -129,17 +134,41 @@ class MainActivity : AppCompatActivity() {
     private lateinit var cameraManager: CameraManager
 
     private fun startCamera() {
-        val analyzer = ObjectDetectorAnalyzer(
+        val obstacleAnalyzer = ObjectDetectorAnalyzer(
             context = this,
             scope = lifecycleScope
+        )
+
+        val faceRepository =
+            FaceRepository(FaceDatabase.getInstance(this).faceDao())
+
+        FaceRecognitionManager(
+            repository = faceRepository,
+            scope = lifecycleScope
+        )
+
+        val faceAnalyzer = FaceAnalyzer(
+            context = this,
+            scope = lifecycleScope,
+            extractor = FaceEmbeddingExtractor(this)
+        )
+
+
+        val compositeAnalyzer = CompositeAnalyzer(
+            listOf(
+                obstacleAnalyzer,
+                faceAnalyzer
+            )
         )
 
         cameraManager = CameraManager(
             context = this,
             lifecycleOwner = this,
             executor = cameraExecutor,
-            analyzer = analyzer
+            analyzer = compositeAnalyzer
         )
+
+
 
         cameraManager.startCamera(
             binding.viewFinder.surfaceProvider

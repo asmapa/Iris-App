@@ -2,6 +2,7 @@ import java.util.Properties
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("kotlin-kapt")
 }
 
 android {
@@ -78,6 +79,8 @@ dependencies {
     // ML Kit dependencies (On-device)
     // Object Detection
     implementation("com.google.mlkit:object-detection:17.0.1")
+    // ML Kit Face Detection
+    implementation("com.google.mlkit:face-detection:16.1.6")
     // Text Recognition (OCR)
     implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.0")
 
@@ -96,4 +99,9 @@ dependencies {
 
     implementation("com.google.android.gms:play-services-location:21.0.1")
 
+    implementation("org.tensorflow:tensorflow-lite:2.13.0")
+
+    implementation("androidx.room:room-runtime:2.6.1")
+    implementation("androidx.room:room-ktx:2.6.1")
+    kapt("androidx.room:room-compiler:2.6.1")
 }

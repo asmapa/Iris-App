@@ -35,31 +35,39 @@ class ObjectDetectorAnalyzer(
     }
 
     override fun analyze(imageProxy: ImageProxy) {
+
+        // 🔒 Respect attention state
         if (AttentionController.state.value == AttentionState.BUSY) {
-            imageProxy.close()
             return
         }
 
-        val bitmap = imageProxy.toBitmap()
-        val image = TensorImage.fromBitmap(bitmap)
-        val results = detector?.detect(image) ?: emptyList()
+        try {
+            val bitmap = imageProxy.toBitmap()
+            val image = TensorImage.fromBitmap(bitmap)
 
-        var maxSize = 0f
+            val results = detector?.detect(image).orEmpty()
 
-        for (detection in results) {
-            val heightRatio =
-                detection.boundingBox.height() / image.height.toFloat()
-            maxSize = maxOf(maxSize, heightRatio)
-        }
+            var maxSize = 0f
 
-        if (maxSize > 0.25f) {
-            scope.launch {
-                IrisEventBus.publish(
-                    IrisEvent.ObstacleDetected(maxSize)
-                )
+            for (detection in results) {
+                val heightRatio =
+                    detection.boundingBox.height() / image.height.toFloat()
+                maxSize = maxOf(maxSize, heightRatio)
             }
+
+            if (maxSize > 0.25f) {
+                scope.launch {
+                    IrisEventBus.publish(
+                        IrisEvent.ObstacleDetected(maxSize)
+                    )
+                }
+            }
+
+        } catch (e: Exception) {
+            Log.e("ObstacleAnalyzer", "Obstacle detection failed", e)
         }
 
-        imageProxy.close()
+        // ❌ DO NOT close imageProxy here
     }
+
 }

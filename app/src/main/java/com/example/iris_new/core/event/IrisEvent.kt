@@ -15,6 +15,14 @@ sealed class IrisEvent {
     // Emergency
     object EmergencyTriggered : IrisEvent()
 
+    // Face system (NEW)
+    data class FaceDetected(
+        val embedding: FloatArray
+    ) : IrisEvent()
+
+    data class FaceRecognized(
+        val name: String
+    ) : IrisEvent()
     // Output
     data class Speak(val text: String) : IrisEvent()
 }

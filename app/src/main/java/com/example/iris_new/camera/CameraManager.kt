@@ -11,13 +11,14 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import com.example.iris_new.ml.obstacle.ObjectDetectorAnalyzer
 import com.example.iris_new.ml.scene.SceneDescriptionManager
+import com.example.iris_new.ui.CompositeAnalyzer
 import java.util.concurrent.ExecutorService
 
 class CameraManager(
     private val context: Context,
     private val lifecycleOwner: LifecycleOwner,
     private val executor: ExecutorService,
-    private val analyzer: ObjectDetectorAnalyzer
+    private val analyzer: CompositeAnalyzer
 ) {
 
     // 🔹 ImageCapture is OWNED by CameraManager

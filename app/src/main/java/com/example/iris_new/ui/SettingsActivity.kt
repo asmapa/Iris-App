@@ -1,5 +1,6 @@
 package com.example.iris_new.ui
 
+import android.content.Intent
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import androidx.appcompat.app.AppCompatActivity
@@ -41,6 +42,13 @@ class SettingsActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 )
             )
         }
+
+        binding.button2.setOnClickListener {
+            startActivity(
+                Intent(this, TeachFaceActivity::class.java)
+            )
+        }
+
     }
 
     override fun onInit(status: Int) {
