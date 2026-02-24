@@ -10,10 +10,18 @@ import java.nio.channels.FileChannel
 
 class FaceEmbeddingExtractor(context: Context) {
 
-    private val interpreter: Interpreter
+    private val interpreter: Interpreter//brain behind the neural network
 
     init {
-        interpreter = Interpreter(loadModelFile(context))
+        interpreter = Interpreter(loadModelFile(context))/*This runs when object created.
+
+        Steps:
+
+        load model file
+
+        create TensorFlow interpreter
+
+        ready to run predictions*/
     }
 
     private fun loadModelFile(context: Context): ByteBuffer {

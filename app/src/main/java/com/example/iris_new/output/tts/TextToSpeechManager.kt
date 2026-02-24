@@ -28,7 +28,7 @@ class TextToSpeechManager(
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
             tts.language = Locale.US
-            tts.speak("IRIS system ready", TextToSpeech.QUEUE_FLUSH, null, "")
+            tts.speak("IRIS system ready . Iam always watching the environment.Say instructions to know all commands", TextToSpeech.QUEUE_FLUSH, null, "")
         }
     }
 }

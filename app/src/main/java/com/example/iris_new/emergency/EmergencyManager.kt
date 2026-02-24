@@ -1,12 +1,12 @@
 package com.example.iris_new.emergency
 
-
 import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.location.Location
-import android.net.Uri
+import android.telephony.PhoneStateListener
 import android.telephony.SmsManager
+import android.telephony.TelephonyManager
 import androidx.core.app.ActivityCompat
 import androidx.core.net.toUri
 import com.example.iris_new.core.event.IrisEvent
@@ -21,11 +21,15 @@ class EmergencyManager(
     private val context: Context,
     private val scope: CoroutineScope
 ) {
-    private val caretakerManager =
-        CaretakerManager(context)
+
+    private val caretakerManager = CaretakerManager(context)
 
     private val fusedLocationClient =
         LocationServices.getFusedLocationProviderClient(context)
+
+    // call tracking
+    private var primaryAnswered = false
+    private var callingPrimary = true
 
     init {
         scope.launch {
@@ -38,17 +42,19 @@ class EmergencyManager(
     }
 
     private fun handleEmergency() {
+
         AttentionController.lock()
 
         scope.launch {
             IrisEventBus.publish(
-                IrisEvent.Speak("Calling emergency contact")
+                IrisEvent.Speak("Emergency detected. Contacting caretakers.")
             )
         }
 
-        val number = caretakerManager.getEmergencyNumber()
+        val primary = caretakerManager.getPrimaryNumber()
+        val backup = caretakerManager.getBackupNumber()
 
-        if (number == null) {
+        if (primary == null && backup == null) {
             scope.launch {
                 IrisEventBus.publish(
                     IrisEvent.Speak(
@@ -60,37 +66,50 @@ class EmergencyManager(
             return
         }
 
-        // 🔒 Permission check BEFORE accessing location
+        // Location permission check
         if (
             ActivityCompat.checkSelfPermission(
                 context,
                 Manifest.permission.ACCESS_FINE_LOCATION
             ) != android.content.pm.PackageManager.PERMISSION_GRANTED
         ) {
-            // Location permission missing → fallback
-            sendSms(number,"Emergency! I need help. Location unavailable.")
-            makeCall(number)
+
+            sendSms(primary, "Emergency! I need help. Location unavailable.")
+            sendSms(backup, "Emergency! I need help. Location unavailable.")
+
+            startPrimaryCall(primary, backup)
             return
         }
 
         try {
             fusedLocationClient.lastLocation
                 .addOnSuccessListener { location ->
+
                     val message = buildMessage(location)
-                    sendSms(number,message)
-                    makeCall(number)
+
+                    // send SMS to BOTH
+                    sendSms(primary, message)
+                    sendSms(backup, message)
+
+                    // call primary first
+                    startPrimaryCall(primary, backup)
                 }
                 .addOnFailureListener {
-                    sendSms(number,"Emergency! I need help. Location unavailable.")
-                    makeCall(number)
+
+                    sendSms(primary, "Emergency! I need help. Location unavailable.")
+                    sendSms(backup, "Emergency! I need help. Location unavailable.")
+
+                    startPrimaryCall(primary, backup)
                 }
+
         } catch (e: SecurityException) {
-            // Defensive fallback (Lint requires this)
-            sendSms(number,"Emergency! I need help. Location unavailable.")
-            makeCall(number)
+
+            sendSms(primary, "Emergency! I need help. Location unavailable.")
+            sendSms(backup, "Emergency! I need help. Location unavailable.")
+
+            startPrimaryCall(primary, backup)
         }
     }
-
 
     private fun buildMessage(location: Location?): String {
         return if (location != null) {
@@ -102,7 +121,10 @@ class EmergencyManager(
         }
     }
 
-    private fun sendSms(number:String,message: String) {
+    private fun sendSms(number: String?, message: String) {
+
+        if (number == null) return
+
         if (
             ActivityCompat.checkSelfPermission(
                 context,
@@ -111,16 +133,59 @@ class EmergencyManager(
         ) return
 
         val sms = SmsManager.getDefault()
-        sms.sendTextMessage(
-            number,
-            null,
-            message,
-            null,
-            null
-        )
+        sms.sendTextMessage(number, null, message, null, null)
     }
 
-    private fun makeCall(number:String) {
+    private fun startPrimaryCall(primary: String?, backup: String?) {
+
+        if (primary == null) {
+            makeCall(backup)
+            return
+        }
+
+        callingPrimary = true
+        primaryAnswered = false
+
+        makeCall(primary)
+
+        val telephonyManager =
+            context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+
+        val listener = object : PhoneStateListener() {
+
+
+            override fun onCallStateChanged(state: Int, phoneNumber: String?) {
+
+                when (state) {
+
+                    TelephonyManager.CALL_STATE_OFFHOOK -> {
+                        primaryAnswered = true
+                    }
+
+                    TelephonyManager.CALL_STATE_IDLE -> {
+
+                        // primary failed → call backup
+                        if (callingPrimary && !primaryAnswered) {
+                            callingPrimary = false
+                            makeCall(backup)
+                        }
+
+                        telephonyManager.listen(this, PhoneStateListener.LISTEN_NONE)
+                    }
+                }
+            }
+        }
+
+        telephonyManager.listen(listener, PhoneStateListener.LISTEN_CALL_STATE)
+    }
+
+    private fun makeCall(number: String?) {
+
+        if (number == null) {
+            AttentionController.release()
+            return
+        }
+
         if (
             ActivityCompat.checkSelfPermission(
                 context,
@@ -129,9 +194,7 @@ class EmergencyManager(
         ) {
             scope.launch {
                 IrisEventBus.publish(
-                    IrisEvent.Speak(
-                        "Call permission not granted"
-                    )
+                    IrisEvent.Speak("Call permission not granted")
                 )
             }
             AttentionController.release()
@@ -141,24 +204,21 @@ class EmergencyManager(
         try {
             val intent = Intent(
                 Intent.ACTION_CALL,
-                "tel:$$number".toUri()
+                "tel:$number".toUri()
             ).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
             }
 
             context.startActivity(intent)
+
         } catch (e: SecurityException) {
             scope.launch {
                 IrisEventBus.publish(
-                    IrisEvent.Speak(
-                        "Unable to place call"
-                    )
+                    IrisEvent.Speak("Unable to place call")
                 )
             }
         } finally {
             AttentionController.release()
         }
     }
-
 }
-

@@ -19,15 +19,29 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"/>
 
-    <!-- Camera Preview -->
-    <androidx.camera.view.PreviewView
-        android:id="@+id/facePreview"
+    <!-- Camera preview + overlay together -->
+    <FrameLayout
+        android:id="@+id/cameraContainer"
         android:layout_width="0dp"
         android:layout_height="220dp"
         android:layout_marginTop="16dp"
         app:layout_constraintTop_toBottomOf="@id/titleText"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <!-- Camera Preview -->
+        <androidx.camera.view.PreviewView
+            android:id="@+id/facePreview"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"/>
+
+        <!-- Face overlay ABOVE camera -->
+        <com.example.iris_new.face.FaceOverlayView
+            android:id="@+id/faceOverlay"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"/>
+
+    </FrameLayout>
 
     <!-- Name Input -->
     <EditText
@@ -39,7 +53,7 @@
         android:padding="12dp"
         android:background="@android:drawable/edit_text"
         android:layout_marginTop="16dp"
-        app:layout_constraintTop_toBottomOf="@id/facePreview"
+        app:layout_constraintTop_toBottomOf="@id/cameraContainer"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 

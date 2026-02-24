@@ -24,7 +24,7 @@ class SceneDescriptionManager(
 
     private val gemini = GenerativeModel(
         modelName = "gemini-2.5-flash",
-        apiKey = com.example.iris_new.BuildConfig.GEMINI_API_KEY
+        apiKey = "AIzaSyC_gXthx6zkYKLvcWtCNYahmmuY6xhSvp8"
     )
 
     init {
@@ -39,6 +39,7 @@ class SceneDescriptionManager(
 
     private fun describeScene() {
         AttentionController.lock()
+
 
         val photoFile = File(context.externalMediaDirs.first(), "scene.jpg")
 
@@ -59,6 +60,16 @@ class SceneDescriptionManager(
                                 IrisEvent.Speak("Analyzing scene")
                             )
 
+
+                            val processingJob = launch {
+                                while (true) {
+                                    IrisEventBus.publish(
+                                        IrisEvent.Speak("Processing")
+                                    )
+                                    kotlinx.coroutines.delay(2500) // speak every 2.5 sec
+                                }
+                            }
+
                             val bitmap =
                                 BitmapFactory.decodeFile(photoFile.absolutePath)
 
@@ -72,12 +83,15 @@ class SceneDescriptionManager(
                             val response =
                                 gemini.generateContent(input)
 
+                            processingJob.cancel()
+
                             response.text?.let {
                                 IrisEventBus.publish(
                                     IrisEvent.Speak(it)
                                 )
                             }
                         } catch (e: Exception) {
+                            e.printStackTrace()
                             IrisEventBus.publish(
                                 IrisEvent.Speak(
                                     "Sorry, I could not analyze the scene"
@@ -92,6 +106,7 @@ class SceneDescriptionManager(
                 override fun onError(exception: ImageCaptureException) {
                     scope.launch {
                         IrisEventBus.publish(
+
                             IrisEvent.Speak("Camera error")
                         )
                     }

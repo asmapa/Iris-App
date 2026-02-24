@@ -6,6 +6,9 @@ import androidx.recyclerview.widget.RecyclerView
 import com.example.iris_new.databinding.ItemFaceBinding
 import com.example.iris_new.face.db.FaceEntity
 
+
+//face adapter class has 2 input , one is list of faces from database and 2nd is a function which run when press delete button
+
 class FaceAdapter(
     private var faces: List<FaceEntity>,
     private val onDelete: (FaceEntity) -> Unit

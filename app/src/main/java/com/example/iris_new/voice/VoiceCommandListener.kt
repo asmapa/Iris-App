@@ -26,5 +26,17 @@ suspend fun processCommand(command: String) {
 
         command.contains("help") ->
             IrisEventBus.publish(IrisEvent.EmergencyTriggered)
+
+
+        command.contains("instructions") || command.contains("what can you do") -> {
+            IrisEventBus.publish(
+                IrisEvent.Speak(
+                    "You can say: read text, describe scene, help for emergency, navigate to a place, or teach a face."
+                )
+            )
+        }
+
+
+
     }
 }

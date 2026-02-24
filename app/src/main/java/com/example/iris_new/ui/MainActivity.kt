@@ -10,10 +10,6 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.Preview
-import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.iris_new.core.event.IrisEventBus
@@ -36,14 +32,17 @@ import com.example.iris_new.face.FaceEmbeddingExtractor
 import com.example.iris_new.face.FaceRecognitionManager
 import com.example.iris_new.face.FaceRepository
 import com.example.iris_new.face.db.FaceDatabase
+import com.example.iris_new.face.RecognitionOverlayView
 
 
 class MainActivity : AppCompatActivity() {
 
+
+    //craeted a variable for ActivityMainBinding which is automatically create dby android with activity_main.xml
     private lateinit var binding: ActivityMainBinding
     private lateinit var speechRecognizer: SpeechRecognizer
     private lateinit var speechIntent: Intent
-
+    private lateinit var recognitionOverlay: RecognitionOverlayView
     private val cameraExecutor = Executors.newSingleThreadExecutor()
 
     private val emergencyPermissions = arrayOf(
@@ -97,12 +96,33 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+
+        //here is where the main page is gonna open
         super.onCreate(savedInstanceState)
+        //object is created for ActivityMainBinding, u can access any buttons
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        recognitionOverlay = binding.recognitionOverlay
+        lifecycleScope.launch {
+            IrisEventBus.events.collect { event ->
+
+                if (event is IrisEvent.FaceBox) {
+
+                    recognitionOverlay.setRect(
+                        event.rect,
+                        event.imageWidth,
+                        event.imageHeight,
+                        false
+                    )
+                }
+            }
+        }
+
 
         // Initialize subscribers
+
+        //objects get created here ,lifecyclescope means it run until the user close the screen
         TextToSpeechManager(this, lifecycleScope)
         HapticManager(
             getSystemService(Vibrator::class.java),
@@ -139,7 +159,7 @@ class MainActivity : AppCompatActivity() {
             scope = lifecycleScope
         )
 
-        val faceRepository =
+       val faceRepository =
             FaceRepository(FaceDatabase.getInstance(this).faceDao())
 
         FaceRecognitionManager(
@@ -214,6 +234,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
+
             override fun onEndOfSpeech() = startListening()
             override fun onError(error: Int) = startListening()
 
@@ -226,6 +247,7 @@ class MainActivity : AppCompatActivity() {
         })
 
         startListening()
+
     }
 
     private fun startListening() {

@@ -1,4 +1,5 @@
 package com.example.iris_new.core.event
+import android.graphics.Rect
 
 sealed class IrisEvent {
 
@@ -25,4 +26,14 @@ sealed class IrisEvent {
     ) : IrisEvent()
     // Output
     data class Speak(val text: String) : IrisEvent()
+
+    data class FaceBox(
+        val rect: Rect,
+        val imageWidth: Int,
+        val imageHeight: Int
+    ) : IrisEvent()
+
+    data class TeachingEmbedding(val embedding: FloatArray) : IrisEvent()
+
+
 }

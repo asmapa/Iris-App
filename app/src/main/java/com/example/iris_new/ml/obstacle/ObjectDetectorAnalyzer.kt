@@ -60,6 +60,9 @@ class ObjectDetectorAnalyzer(
                     IrisEventBus.publish(
                         IrisEvent.ObstacleDetected(maxSize)
                     )
+
+                   
+
                 }
             }
 

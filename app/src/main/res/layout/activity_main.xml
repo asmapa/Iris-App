@@ -7,6 +7,9 @@
     android:background="#970A0A"
     tools:context=".ui.MainActivity">
 
+
+
+
     <androidx.camera.view.PreviewView
         android:id="@+id/viewFinder"
         android:layout_width="match_parent"
@@ -18,6 +21,11 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintVertical_bias="1.0" />
+
+    <com.example.iris_new.face.RecognitionOverlayView
+        android:id="@+id/recognitionOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"/>
 
 
     <TextView
