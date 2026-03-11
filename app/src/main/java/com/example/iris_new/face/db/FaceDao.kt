@@ -16,6 +16,9 @@ interface FaceDao {
     @Query("DELETE FROM faces WHERE id = :id")
     suspend fun deleteFace(id: Int)
 
+    @Query("DELETE FROM faces WHERE name = :name")
+    suspend fun deleteFaceByName(name: String)
+
     @Query("DELETE FROM faces")
     suspend fun deleteAll()
 }

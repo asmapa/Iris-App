@@ -36,6 +36,11 @@ class FaceRepository(
         dao.deleteFace(id)
     }
 
+    suspend fun deleteFaceByName(name: String) {
+        Log.d("FACE_DB", "Deleting all embeddings for face = $name")
+        dao.deleteFaceByName(name)
+    }
+
     // ---------------- NORMALIZATION ----------------
     private fun normalize(vec: FloatArray): FloatArray {
         var sum = 0f
@@ -101,7 +106,7 @@ class FaceRepository(
         Log.d("FACE_DEBUG", "BEST MATCH: $bestName")
         Log.d("FACE_DEBUG", "BEST DISTANCE: $bestDistance")
 
-        val THRESHOLD = 0.75f
+        val THRESHOLD = 1.05f // Perfect balance between 1.10 (too loose) and 0.95 (too strict)
 
         return if (bestName != null && bestDistance < THRESHOLD) {
             Log.d("FACE_RESULT", "RECOGNIZED PERSON: $bestName")

@@ -24,7 +24,7 @@ class SceneDescriptionManager(
 
     private val gemini = GenerativeModel(
         modelName = "gemini-2.5-flash",
-        apiKey = "AIzaSyC_gXthx6zkYKLvcWtCNYahmmuY6xhSvp8"
+        apiKey = "AIzaSyCIZA9odIFaeFrA_-pZQH4dPsK5L5PEWts"
     )
 
     init {

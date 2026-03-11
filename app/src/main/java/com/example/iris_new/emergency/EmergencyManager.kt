@@ -4,9 +4,9 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.location.Location
-import android.telephony.PhoneStateListener
+import android.os.Handler
+import android.os.Looper
 import android.telephony.SmsManager
-import android.telephony.TelephonyManager
 import androidx.core.app.ActivityCompat
 import androidx.core.net.toUri
 import com.example.iris_new.core.event.IrisEvent
@@ -27,9 +27,7 @@ class EmergencyManager(
     private val fusedLocationClient =
         LocationServices.getFusedLocationProviderClient(context)
 
-    // call tracking
-    private var primaryAnswered = false
-    private var callingPrimary = true
+    private val handler = Handler(Looper.getMainLooper())
 
     init {
         scope.launch {
@@ -66,7 +64,6 @@ class EmergencyManager(
             return
         }
 
-        // Location permission check
         if (
             ActivityCompat.checkSelfPermission(
                 context,
@@ -87,11 +84,9 @@ class EmergencyManager(
 
                     val message = buildMessage(location)
 
-                    // send SMS to BOTH
                     sendSms(primary, message)
                     sendSms(backup, message)
 
-                    // call primary first
                     startPrimaryCall(primary, backup)
                 }
                 .addOnFailureListener {
@@ -143,40 +138,23 @@ class EmergencyManager(
             return
         }
 
-        callingPrimary = true
-        primaryAnswered = false
-
+        // Call primary
         makeCall(primary)
 
-        val telephonyManager =
-            context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+        // Wait 20 seconds
+        handler.postDelayed({
 
-        val listener = object : PhoneStateListener() {
-
-
-            override fun onCallStateChanged(state: Int, phoneNumber: String?) {
-
-                when (state) {
-
-                    TelephonyManager.CALL_STATE_OFFHOOK -> {
-                        primaryAnswered = true
-                    }
-
-                    TelephonyManager.CALL_STATE_IDLE -> {
-
-                        // primary failed → call backup
-                        if (callingPrimary && !primaryAnswered) {
-                            callingPrimary = false
-                            makeCall(backup)
-                        }
-
-                        telephonyManager.listen(this, PhoneStateListener.LISTEN_NONE)
-                    }
+            // After 20s call backup automatically
+            if (backup != null) {
+                scope.launch {
+                    IrisEventBus.publish(
+                        IrisEvent.Speak("Primary not responding. Calling backup contact.")
+                    )
                 }
+                makeCall(backup)
             }
-        }
 
-        telephonyManager.listen(listener, PhoneStateListener.LISTEN_CALL_STATE)
+        }, 20000) // 20 seconds delay
     }
 
     private fun makeCall(number: String?) {

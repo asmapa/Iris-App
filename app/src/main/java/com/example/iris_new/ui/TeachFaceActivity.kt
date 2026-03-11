@@ -44,6 +44,9 @@ class TeachFaceActivity : AppCompatActivity() {
     private lateinit var faceOverlay: FaceOverlayView
 
     private var waitingForCapture = false
+    private var captureState = 0 // 0=Center, 1=Left, 2=Right, 3=Up, 4=Down
+    private val capturedEmbeddings = mutableListOf<FloatArray>()
+    private var lastGuidanceTime = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -66,23 +69,55 @@ class TeachFaceActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             IrisEventBus.events.collect { event ->
-
                 if (event is IrisEvent.TeachingEmbedding && waitingForCapture) {
-
                     val name = binding.nameInput.text.toString().trim()
                     if (name.isEmpty()) return@collect
 
-                    repository.addFace(name, event.embedding)
+                    val yaw = event.yaw
+                    val pitch = event.pitch
+                    var stateMatched = false
 
-                    Toast.makeText(
-                        this@TeachFaceActivity,
-                        "Face saved for $name",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    when (captureState) {
+                        0 -> if (yaw in -10f..10f && pitch in -10f..10f) stateMatched = true // Center
+                        1 -> if (yaw < -15f) stateMatched = true // Left
+                        2 -> if (yaw > 15f) stateMatched = true // Right
+                        3 -> if (pitch > 10f) stateMatched = true // Up
+                        4 -> if (pitch < -10f) stateMatched = true // Down
+                    }
 
-                    binding.nameInput.text.clear()
-                    FaceAnalyzer.teachingMode = false
-                    waitingForCapture = false
+                    val now = System.currentTimeMillis()
+
+                    if (stateMatched) {
+                        capturedEmbeddings.add(event.embedding)
+                        captureState++
+
+                        if (captureState > 4) {
+                            // Save all embeddings
+                            for (emb in capturedEmbeddings) {
+                                repository.addFace(name, emb)
+                            }
+
+                            val toastMsg = "Registration complete for $name!"
+                            Toast.makeText(this@TeachFaceActivity, toastMsg, Toast.LENGTH_SHORT).show()
+                            launch { IrisEventBus.publish(IrisEvent.Speak(toastMsg)) }
+
+                            binding.nameInput.text.clear()
+                            FaceAnalyzer.teachingMode = false
+                            waitingForCapture = false
+                        } else {
+                            val guidance = getGuidanceMessage(captureState)
+                            Toast.makeText(this@TeachFaceActivity, guidance, Toast.LENGTH_SHORT).show()
+                            launch { IrisEventBus.publish(IrisEvent.Speak(guidance)) }
+                            lastGuidanceTime = now
+                        }
+                    } else {
+                        // Respeak guidance every 3 seconds if not matching
+                        if (now - lastGuidanceTime > 3000) {
+                            val guidance = getGuidanceMessage(captureState)
+                            launch { IrisEventBus.publish(IrisEvent.Speak(guidance)) }
+                            lastGuidanceTime = now
+                        }
+                    }
                 }
             }
         }
@@ -140,7 +175,9 @@ class TeachFaceActivity : AppCompatActivity() {
     private fun loadFaces() {
         lifecycleScope.launch {
             val faces = repository.getAllFaces()
-            adapter.updateData(faces)
+            // Group the 5 embeddings by name so the user only sees one entry per person
+            val uniqueFaces = faces.distinctBy { it.name }
+            adapter.updateData(uniqueFaces)
         }
     }
 
@@ -156,15 +193,14 @@ class TeachFaceActivity : AppCompatActivity() {
             }
 
             waitingForCapture = true
+            captureState = 0
+            capturedEmbeddings.clear()
             FaceAnalyzer.teachingMode = true
 
-            Toast.makeText(
-                this,
-                "Place face inside oval",
-                Toast.LENGTH_SHORT
-            ).show()
-
-            FaceAnalyzer.teachingMode = true
+            val startMessage = "Place face inside oval and look straight ahead"
+            Toast.makeText(this, startMessage, Toast.LENGTH_SHORT).show()
+            lifecycleScope.launch { IrisEventBus.publish(IrisEvent.Speak(startMessage)) }
+            lastGuidanceTime = System.currentTimeMillis()
         }
 
 
@@ -177,7 +213,8 @@ class TeachFaceActivity : AppCompatActivity() {
                 .setMessage("Remove ${face.name}?")
                 .setPositiveButton("Delete") { _, _ ->
                     lifecycleScope.launch {
-                        repository.deleteFace(face.id)
+                        // Delete ALL 5 embeddings associated with this person's name
+                        repository.deleteFaceByName(face.name)
                         loadFaces()
                     }
                 }
@@ -191,6 +228,17 @@ class TeachFaceActivity : AppCompatActivity() {
 
     }
 
+
+    private fun getGuidanceMessage(state: Int): String {
+        return when (state) {
+            0 -> "Look straight ahead"
+            1 -> "Turn your head slightly left"
+            2 -> "Turn your head slightly right"
+            3 -> "Tilt your head slightly up"
+            4 -> "Tilt your head slightly down"
+            else -> ""
+        }
+    }
 
     override fun onDestroy() {
         super.onDestroy()

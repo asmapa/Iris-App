@@ -21,6 +21,7 @@ class OcrManager(
     private val scope: CoroutineScope
 ) {
 
+    private var stopRequested = false
     private val recognizer =
         TextRecognition.getClient(
             TextRecognizerOptions.DEFAULT_OPTIONS
@@ -29,14 +30,23 @@ class OcrManager(
     init {
         scope.launch {
             IrisEventBus.events.collect { event ->
+
                 if (event is IrisEvent.ReadText) {
+                    stopRequested = false
                     readText()
                 }
+
+                if (event is IrisEvent.StopReading) {
+                    stopRequested = true
+                }
+
             }
         }
     }
 
     private fun readText() {
+
+        if (stopRequested) return
         AttentionController.lock()
 
         val photoDir = context.getExternalFilesDir(null)
@@ -67,6 +77,8 @@ class OcrManager(
 
                             recognizer.process(image)
                                 .addOnSuccessListener { result ->
+
+                                    if (stopRequested) return@addOnSuccessListener
                                     val text = result.text
 
                                     if (text.isNotBlank()) {

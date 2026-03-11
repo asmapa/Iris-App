@@ -32,6 +32,7 @@ class FaceAnalyzer(
     private val detector = FaceDetection.getClient(
         FaceDetectorOptions.Builder()
             .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
+            .enableTracking()
             .build()
     )
 
@@ -61,16 +62,22 @@ class FaceAnalyzer(
             lastProcessedTime = now
 
             // 🔄 Convert to bitmap
-            val bitmap = try {
+            val originalBitmap = try {
                 imageProxy.toBitmap().copy(Bitmap.Config.ARGB_8888, false)
             } catch (e: Exception) {
                 Log.e("FACE_ANALYZER", "Bitmap conversion failed", e)
                 return
             }
 
+            val degrees = imageProxy.imageInfo.rotationDegrees.toFloat()
+            val matrix = android.graphics.Matrix().apply {
+                postRotate(degrees)
+            }
+            val bitmap = Bitmap.createBitmap(originalBitmap, 0, 0, originalBitmap.width, originalBitmap.height, matrix, true)
+
             // 🔁 Create ML input
             val inputImage = try {
-                InputImage.fromBitmap(bitmap, imageProxy.imageInfo.rotationDegrees)
+                InputImage.fromBitmap(bitmap, 0)
             } catch (e: Exception) {
                 Log.e("FACE_ANALYZER", "InputImage creation failed", e)
                 return
@@ -98,6 +105,12 @@ class FaceAnalyzer(
                         val face = faces[0]
                         val box = face.boundingBox
 
+                        // Prevent hallucinating distant tiny ghost faces as people
+                        if (box.width() < bitmap.width * 0.10 || box.height() < bitmap.height * 0.10) {
+                            Log.d("FACE_ANALYZER", "Face too small, ignoring")
+                            return@addOnSuccessListener
+                        }
+
                         // 🟢 Oval check
                         val faceCenterX = box.centerX()
                         val faceCenterY = box.centerY()
@@ -112,7 +125,7 @@ class FaceAnalyzer(
                             faceCenterX in (ovalCenterX - allowedWidth).toInt()..(ovalCenterX + allowedWidth).toInt() &&
                                     faceCenterY in (ovalCenterY - allowedHeight).toInt()..(ovalCenterY + allowedHeight).toInt()
 
-                        if (!isInsideOval) {
+                        if (teachingMode && !isInsideOval) {
                             Log.d("FACE_ANALYZER", "Face outside oval")
 
                             scope.launch {
@@ -144,14 +157,15 @@ class FaceAnalyzer(
                             }
                         }
 
-                        // ✂️ Crop face
+                        // ✂️ Crop and Align face (Advanced Face Alignment)
                         val croppedFace = try {
 
                             val centerX = box.centerX()
                             val centerY = box.centerY()
 
-                            val cropWidth = (box.width() * 0.75f).toInt()
-                            val cropHeight = (box.height() * 0.90f).toInt()
+                            // MobileFaceNet requires the full face box, not heavily cropped
+                            val cropWidth = box.width()
+                            val cropHeight = box.height()
 
                             val left = (centerX - cropWidth / 2).coerceAtLeast(0)
                             val top = (centerY - cropHeight / 2).coerceAtLeast(0)
@@ -188,17 +202,19 @@ class FaceAnalyzer(
                                 Log.d("EMBEDDING_FLOW", "Embedding extracted")
                                 if (AttentionController.state.value != AttentionState.FREE
 
-                                    ) return@launch
+                                ) return@launch
 
                                 if (teachingMode) {
                                     Log.d("EMBEDDING_FLOW", "Teaching mode active")
+                                    val yaw = face.headEulerAngleY
+                                    val pitch = face.headEulerAngleX
                                     scope.launch {
-                                        IrisEventBus.publish(IrisEvent.TeachingEmbedding(embedding))
+                                        IrisEventBus.publish(IrisEvent.TeachingEmbedding(embedding, yaw, pitch))
                                     }
                                 } else {
                                     Log.d("EMBEDDING_FLOW", "Recognition mode active")
                                     scope.launch {
-                                        IrisEventBus.publish(IrisEvent.FaceDetected(embedding))
+                                        IrisEventBus.publish(IrisEvent.FaceDetected(embedding, face.trackingId))
                                     }
                                 }
 

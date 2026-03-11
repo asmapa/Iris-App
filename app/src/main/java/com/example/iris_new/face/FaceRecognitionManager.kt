@@ -13,73 +13,60 @@ class FaceRecognitionManager(
     // 🔒 control when recognition should run
     var recognitionEnabled = true
 
-    // 🔊 speech cooldown tracking
-    private var lastSpoken: String? = null
-    private var lastTime = 0L
+    // 🔊 continuous MLKit face tracking
+    private var activeTrackingId: Int? = null
+    private var activeIdentity: String? = null
+    private var lastSpokenTime = 0L
 
-    // 🎯 confidence threshold (tune later)
-    private val MATCH_THRESHOLD = 1.0f
+    // 🎯 confidence threshold (aligned with FaceRepository)
+    private val MATCH_THRESHOLD = 1.05f
 
     init {
         scope.launch {
             IrisEventBus.events.collect { event ->
                 if (event is IrisEvent.FaceDetected && recognitionEnabled) {
-                    recognize(event.embedding)
+                    recognize(event.embedding, event.trackingId)
                 }
             }
         }
     }
 
-    private fun recognize(embedding: FloatArray) {
+    private fun recognize(embedding: FloatArray, trackingId: Int?) {
 
         scope.launch {
 
-            val result: Pair<String, Float>? =
-                repository.findMatchWithScore(embedding)
-
+            val result = repository.findMatchWithScore(embedding)
             val now = System.currentTimeMillis()
 
-            // ---------------- UNKNOWN PERSON ----------------
-            if (result == null) {
+            val isUnknown = result == null || result.second > MATCH_THRESHOLD
+            val identity = if (isUnknown) "unknown" else result!!.first
 
-                // cooldown
-                if (lastSpoken == "unknown" && now - lastTime < 5000) return@launch
+            // Did a physically new face enter the frame?
+            val isNewFace = (trackingId != null && trackingId != activeTrackingId)
 
-                lastSpoken = "unknown"
-                lastTime = now
+            if (isNewFace || trackingId == null) {
 
-                IrisEventBus.publish(
-                    IrisEvent.Speak("Unknown person")
-                )
+                // Fallback debounce for untracked frames
+                if (trackingId == null && now - lastSpokenTime < 5000) return@launch
+
+                activeTrackingId = trackingId
+                activeIdentity = identity
+                lastSpokenTime = now
+
+                val msg = "$identity is in front of you"
+                IrisEventBus.publish(IrisEvent.Speak(msg))
                 return@launch
             }
 
-            val name = result.first
-            val score = result.second
+            // Same physical person is still in frame
+            // Prevent spam from wiggles/lighting changes. Only re-announce every 10s.
+            if (now - lastSpokenTime > 10_000) {
+                activeIdentity = identity
+                lastSpokenTime = now
 
-            // ---------------- CONFIDENCE CHECK ----------------
-            if (score > MATCH_THRESHOLD) {
-
-                if (lastSpoken == "unknown" && now - lastTime < 5000) return@launch
-
-                lastSpoken = "unknown"
-                lastTime = now
-
-                IrisEventBus.publish(
-                    IrisEvent.Speak("Unknown person")
-                )
-                return@launch
+                val msg = "$identity is in front of you"
+                IrisEventBus.publish(IrisEvent.Speak(msg))
             }
-
-            // ---------------- SAME PERSON COOLDOWN ----------------
-            if (name == lastSpoken && now - lastTime < 10_000) return@launch
-
-            lastSpoken = name
-            lastTime = now
-
-            IrisEventBus.publish(
-                IrisEvent.Speak("$name is in front of you")
-            )
         }
     }
 }

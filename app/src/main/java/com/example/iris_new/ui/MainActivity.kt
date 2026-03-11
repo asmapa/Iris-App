@@ -1,11 +1,17 @@
 package com.example.iris_new.ui
 
 import android.Manifest
+import android.graphics.Color
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Vibrator
+import org.tensorflow.lite.task.vision.detector.Detection
+import com.example.iris_new.ObjectDetectionActivity
 import android.speech.RecognitionListener
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
+import com.example.iris_new.core.system.PhoneStatusManager
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import androidx.activity.result.contract.ActivityResultContracts
@@ -27,6 +33,14 @@ import com.example.iris_new.navigation.NavigationManager
 import kotlinx.coroutines.launch
 import java.util.Locale
 import java.util.concurrent.Executors
+import com.example.iris_new.core.color.ColorDetectionManager
+import android.graphics.BitmapFactory
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.common.InputImage
+import java.io.File
+import android.util.Log
+import com.example.iris_new.core.vision.ObjectDetectorHelper
+
 import com.example.iris_new.face.FaceAnalyzer
 import com.example.iris_new.face.FaceEmbeddingExtractor
 import com.example.iris_new.face.FaceRecognitionManager
@@ -35,14 +49,20 @@ import com.example.iris_new.face.db.FaceDatabase
 import com.example.iris_new.face.RecognitionOverlayView
 
 
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+
+
 class MainActivity : AppCompatActivity() {
 
 
     //craeted a variable for ActivityMainBinding which is automatically create dby android with activity_main.xml
     private lateinit var binding: ActivityMainBinding
     private lateinit var speechRecognizer: SpeechRecognizer
+
+
     private lateinit var speechIntent: Intent
     private lateinit var recognitionOverlay: RecognitionOverlayView
+    private lateinit var objectDetectorHelper: ObjectDetectorHelper
     private val cameraExecutor = Executors.newSingleThreadExecutor()
 
     private val emergencyPermissions = arrayOf(
@@ -60,6 +80,7 @@ class MainActivity : AppCompatActivity() {
                 startSpeechRecognizer()
             }
         }
+
     private fun setupUiActions() {
 
         binding.readTextButton.setOnClickListener {
@@ -119,7 +140,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-
         // Initialize subscribers
 
         //objects get created here ,lifecyclescope means it run until the user close the screen
@@ -129,12 +149,56 @@ class MainActivity : AppCompatActivity() {
             lifecycleScope
         )
 
+
+
+
+        //Event calling for currency detection
+        lifecycleScope.launch {
+            IrisEventBus.events.collect { event ->
+
+
+
+
+                if (event is IrisEvent.StartFind) {
+
+                    val intent = Intent(
+                        this@MainActivity,
+                        ObjectDetectionActivity::class.java
+                    )
+
+                    intent.putExtra("TARGET_OBJECT", event.target)
+
+                    startActivity(intent)
+                }
+
+
+                if (event is IrisEvent.DetectCurrency) {
+                    Log.d("CURRENCY_DEBUG", "DetectCurrency event received")
+
+                    IrisEventBus.publish(
+                        IrisEvent.Speak("Hold the note steady")
+                    )
+
+                    cameraManager.imageCapture?.let { capture ->
+                        captureCurrencyImage(capture)
+                    }
+                }
+            }
+        }
+
         NavigationManager(
             context = this,
             scope = lifecycleScope
         )
 
         EmergencyManager(
+            context = this,
+            scope = lifecycleScope
+        )
+
+
+
+        PhoneStatusManager(
             context = this,
             scope = lifecycleScope
         )
@@ -154,25 +218,29 @@ class MainActivity : AppCompatActivity() {
     private lateinit var cameraManager: CameraManager
 
     private fun startCamera() {
+
         val obstacleAnalyzer = ObjectDetectorAnalyzer(
             context = this,
             scope = lifecycleScope
         )
-
-       val faceRepository =
-            FaceRepository(FaceDatabase.getInstance(this).faceDao())
+        val faceRepository =
+            FaceRepository(
+                FaceDatabase.getInstance(this).faceDao()
+            )
 
         FaceRecognitionManager(
             repository = faceRepository,
             scope = lifecycleScope
         )
 
+
+
+        // Face analyzer now ONLY detects faces
         val faceAnalyzer = FaceAnalyzer(
             context = this,
             scope = lifecycleScope,
             extractor = FaceEmbeddingExtractor(this)
         )
-
 
         val compositeAnalyzer = CompositeAnalyzer(
             listOf(
@@ -188,27 +256,122 @@ class MainActivity : AppCompatActivity() {
             analyzer = compositeAnalyzer
         )
 
-
-
         cameraManager.startCamera(
             binding.viewFinder.surfaceProvider
         )
 
-        // 🔹 Initialize SceneDescriptionManager HERE
+        // Scene description
         SceneDescriptionManager(
             context = this,
             imageCapture = cameraManager.imageCapture,
             scope = lifecycleScope
         )
 
-        OcrManager(
+        ColorDetectionManager(
             context = this,
             imageCapture = cameraManager.imageCapture,
             scope = lifecycleScope
         )
 
+        // OCR
+        OcrManager(
+            context = this,
+            imageCapture = cameraManager.imageCapture,
+            scope = lifecycleScope
+        )
     }
 
+
+    private fun captureCurrencyImage(imageCapture: ImageCapture) {
+
+        val file = File(filesDir, "currency.jpg")
+
+        val outputOptions =
+            ImageCapture.OutputFileOptions.Builder(file).build()
+
+        imageCapture.takePicture(
+            outputOptions,
+            ContextCompat.getMainExecutor(this),
+
+            object : ImageCapture.OnImageSavedCallback {
+
+                override fun onImageSaved(
+                    outputFileResults: ImageCapture.OutputFileResults
+                ) {
+                    Log.d("CURRENCY_DEBUG", "Image captured successfully")
+                    processCurrencyImage(file)
+                }
+
+                override fun onError(exception: ImageCaptureException) {
+                    lifecycleScope.launch {
+                        IrisEventBus.publish(
+                            IrisEvent.Speak("Failed to capture image")
+                        )
+                    }
+                }
+            }
+        )
+    }
+
+    private fun processCurrencyImage(file: File) {
+
+        val bitmap = BitmapFactory.decodeFile(file.absolutePath)
+
+        if (bitmap == null) {
+            Log.e("CURRENCY_DEBUG", "Bitmap is NULL")
+            return
+        }
+
+        Log.d("CURRENCY_DEBUG", "Bitmap loaded ${bitmap.width}x${bitmap.height}")
+
+        val image = InputImage.fromBitmap(bitmap, 0)
+
+        val recognizer =
+            TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+
+        recognizer.process(image)
+            .addOnSuccessListener { visionText ->
+
+                val ocrText = visionText.text.lowercase()
+                Log.d("CURRENCY_DEBUG", "OCR TEXT: $ocrText")
+
+                val validNotes = listOf("10", "20", "50", "100", "200", "500","2000")
+
+                val numbers = Regex("\\d+")
+                    .findAll(ocrText)
+                    .map { it.value }
+                    .toList()
+
+                Log.d("CURRENCY_DEBUG", "Numbers detected: $numbers")
+
+                val detectedAmount =
+                    numbers.firstOrNull { it in validNotes }
+
+                lifecycleScope.launch {
+
+                    if (detectedAmount != null) {
+                        Log.d("CURRENCY_DEBUG", "Detected: $detectedAmount")
+                        IrisEventBus.publish(
+                            IrisEvent.Speak("$detectedAmount rupees")
+                        )
+                    } else {
+                        Log.d("CURRENCY_DEBUG", "No valid currency found")
+                        IrisEventBus.publish(
+                            IrisEvent.Speak("Unable to identify the amount")
+                        )
+                    }
+                }
+            }
+            .addOnFailureListener {
+                Log.e("CURRENCY_DEBUG", "OCR failed", it)
+                lifecycleScope.launch {
+                    IrisEventBus.publish(
+                        IrisEvent.Speak("Text recognition failed")
+                    )
+                }
+            }
+
+    }
 
     // ---------------- SPEECH ----------------
 
