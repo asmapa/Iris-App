@@ -23,9 +23,7 @@ sealed class IrisEvent {
     ) : IrisEvent()
 
     data class TeachingEmbedding(
-        val embedding: FloatArray,
-        val yaw: Float,
-        val pitch: Float
+        val embedding: FloatArray
     ) : IrisEvent()
     object DetectColor : IrisEvent()
 

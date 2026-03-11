@@ -206,13 +206,14 @@ class FaceAnalyzer(
 
                                 if (teachingMode) {
                                     Log.d("EMBEDDING_FLOW", "Teaching mode active")
-                                    val yaw = face.headEulerAngleY
-                                    val pitch = face.headEulerAngleX
+
                                     scope.launch {
-                                        IrisEventBus.publish(IrisEvent.TeachingEmbedding(embedding, yaw, pitch))
+                                        IrisEventBus.publish(IrisEvent.TeachingEmbedding(embedding))
                                     }
+
                                 } else {
                                     Log.d("EMBEDDING_FLOW", "Recognition mode active")
+
                                     scope.launch {
                                         IrisEventBus.publish(IrisEvent.FaceDetected(embedding, face.trackingId))
                                     }
